@@ -1,0 +1,24 @@
+version = 0.1
+[default.deploy.parameters]
+stack_name = "redshift-to-dynamo"
+s3_bucket = "aws-sam-cli-managed-default-samclisourcebucket-1b57tm2pdkoi1"
+s3_prefix = "redshift-to-dynamo"
+region = "us-west-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = """
+                         StackPrefix=\"RedshiftToDynamo\" \
+                        DynamoDbBillingMode=\"PAY_PER_REQUEST\" \
+                        DynamoDbPointInTimeRecovery=\"true\" \
+                        DynamoDbTtl=\"TTL\" \
+                        SubnetIds=\"subnet-0169efb331f0f198f\" \
+                        SecGroup=\"sg-00453a44e8474e5ea\" \
+                        DataS3Bucket=\"ingestion-balatest-nsc-data-management-dev-us-west-1\" \
+                        ShouldEnableTracing=\"false\" \
+                        DbSecretArn=\"arn:aws:secretsmanager:us-west-1:607745728546:secret:redshifttest-nsc-test-Redshift-nsc-redshift-cluster-credentials-dBsnVH\" \
+                        RedshiftDbName=\"dev\" \
+                        ClusterIdentifier=\"nsc-redshift-cluster\" \
+                        RedshiftIAMRole=\"arn:aws:iam::607745728546:role/redshifttest-nsc-test-RedshiftClusterRole-UHLQNMZBNP05\" \
+                        DynamodbMetaTable=\"redshift-to-dynamo-meta\" \
+                        DynamodbTargetTable=\"edm-student-dim\"
+                        """

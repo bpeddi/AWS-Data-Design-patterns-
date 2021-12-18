@@ -1,0 +1,52 @@
+{
+  "Comment": "Load redshift into Dynamodb",
+  "StartAt": "Execute Redshift Stored Procedure",
+  "States": {
+    "Execute Redshift Stored Procedure": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
+      "HeartbeatSeconds": 180,
+      "Parameters": {
+        "FunctionName": "${redshiftUnload}",
+        "Payload": {
+          "token.$": "$$.Task.Token",
+          "sql.$": "$.sql",
+          "filesize.$" : "$.filesize"
+        }
+      },
+      "Catch":[
+        {
+           "ErrorEquals":[
+              "States.ALL"
+           ],
+           "Next":"Send Error Message",
+           "ResultPath": "$.error"
+        }
+     ],
+      "Next": "Done"
+    },
+    "Send Error Message": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sqs:sendMessage",
+      "Parameters": {
+        "QueueUrl": "${DeadLetterQueueUrl}",
+        "MessageBody.$": "$$.Execution.Input",
+        "MessageGroupId.$": "$$.StateMachine.Id",
+        "MessageAttributes": {
+          "ExecutionId": {
+            "DataType": "String",
+            "StringValue.$": "$$.Execution.Id"
+          }
+        }
+      },
+      "Next": "Fail"
+    },
+    "Fail": {
+      "Type": "Fail"
+    },
+    "Done": {
+      "Type": "Succeed"
+    }
+  }
+}
+

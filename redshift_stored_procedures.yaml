@@ -1,0 +1,550 @@
+---
+AWSTemplateFormatVersion: 2010-09-09
+Transform: AWS::Serverless-2016-10-31
+Description: >-
+  Redshift to DynamoDbTable using Event Bridge
+
+Parameters:
+  StackPrefix:
+    Description: >-
+          Stack prefix
+    Type: String
+    Default: "RedshiftToDynamo"
+
+  DynamoDbBillingMode:
+    Description: >-
+      Specify how you are charged for read and write throughput and how you manage capacity.
+    Type: String
+    Default: PAY_PER_REQUEST
+    AllowedValues:
+      - PROVISIONED
+      - PAY_PER_REQUEST
+
+  DynamoDbPointInTimeRecovery:
+    Description: >-
+      Enable point in time recovery DynamoDB table backups
+    Type: String
+    Default: true
+    AllowedValues:
+      - false
+      - true
+
+  DynamoDbTtl:
+    Description: >-
+      Specifies the DynamoDb TTL attribute. Leave empty to disable
+    Type: String
+    Default: TTL
+
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: >-
+      Provide IDs of existing Private Subnets (comma separated) in a
+      existing VPC to which the Lambda function will be deployed.
+    Default: "RedshiftToDynamo"
+
+  SecGroup:
+    Type: String
+    Description: Security Group For outgoing Lambda
+    Default: "RedshiftToDynamo"
+
+  DataS3Bucket:
+    Type: String
+    Description: Data S3 bucket name
+    Default: "RedshiftToDynamo"
+
+  ShouldEnableTracing:
+    Description: >-
+      Enable tracing XRay Tracing for Step Functions and Lambda
+    Type: String
+    Default: false
+    AllowedValues:
+      - false
+      - true
+
+  DbSecretArn:
+    Type: String
+    Description: Redshift ARN
+    Default: "redshifttest-nsc-test-Redshift-nsc-redshift-cluster-credentials"
+
+  RedshiftDbName:
+    Type: String
+    Description: Redshift DB name
+    Default: "dev"
+
+  ClusterIdentifier:
+    Type: String
+    Description: Redshift IAM role
+    Default: "nsc-redshift-cluster"
+
+  RedshiftIAMRole:
+    Type: String
+    Description: Redshift IAM role
+    Default: "arn:aws:iam::607745728546:role/redshifttest-nsc-test-RedshiftClusterRole-UHLQNMZBNP05"
+
+  DynamodbMetaTable:
+    Type: String
+    Description: Metadata table to track the Dyanmodb
+    Default: "redshift-to-dynamo-meta"
+
+  DynamodbTargetTable:
+    Type: String
+    Description: Target DynamoDb table for loading data
+    Default: "AWS-student-dim"
+
+  SupportNotificationEmail:
+    Type: String
+    Description: Email address to send Stepfunction failure notifications
+    Default: peddibp@amazon.com
+
+Conditions:
+  ShouldEnableTrace: !Equals ['true', !Ref ShouldEnableTracing]
+
+##########################################################################
+# SAM Globals
+##########################################################################
+Globals:
+  Function:
+    Runtime: python3.8
+
+
+Resources:
+##########################################################################
+# DynamoDb Table to store Step function Tocken
+##########################################################################
+  DynamoDbTableMeta:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref DynamodbMetaTable
+      AttributeDefinitions:
+        # primary key attributes
+        - AttributeName: statementName
+          AttributeType: S
+      KeySchema:
+        - AttributeName: statementName
+          KeyType: HASH
+      BillingMode: !Ref DynamoDbBillingMode
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: !Ref DynamoDbPointInTimeRecovery
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-table"
+        - Key: Service
+          Value: "AWS"
+
+##########################################################################
+# Lambda Layers
+##########################################################################
+
+  # https://aws-data-wrangler.readthedocs.io/en/stable/index.html
+  AwsDataWranglerLayer:
+    Type: AWS::Serverless::LayerVersion
+    Metadata:
+      BuildMethod: makefile
+    Properties:
+      Description: >-
+        AWS Data Wrangler Layer
+      ContentUri: src/lambda_layers/aws-data-wrangler
+      CompatibleRuntimes:
+        - python3.8
+
+  # https://awslabs.github.io/aws-lambda-powertools-python/
+  AwsLambdaPowertoolsPythonLayer:
+    Type: AWS::Serverless::LayerVersion
+    Metadata:
+      BuildMethod: python3.8
+    Properties:
+      Description: >-
+        AWS Lambda Power Tools Python
+      ContentUri: ./src/lambda_layers/aws-lambda-power-tools
+      CompatibleRuntimes:
+        - python3.8
+
+  RedshiftRunSpsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./src/lambda_functions/extract_redshift
+      Description: >-
+       This function calls redshift data API to submit stored procedure
+      Handler: app.lambda_handler
+      Layers:
+        - !Ref AwsDataWranglerLayer
+        - !Ref AwsLambdaPowertoolsPythonLayer
+      MemorySize: 2048
+      # policy templates:
+      # https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-policy-templates.html
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref DynamodbMetaTable
+        - AmazonRedshiftDataFullAccess
+        - AWSSecretsManagerGetSecretValuePolicy:
+            SecretArn: !Ref DbSecretArn
+      Timeout: 900
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref SecGroup
+        SubnetIds: !Ref SubnetIds
+      Tracing:
+        !If
+        - ShouldEnableTrace
+        - Active
+        - PassThrough
+      Environment:
+        Variables:
+          DATAS3BUCKET: !Ref DataS3Bucket
+          DBSECRETARN: !Ref DbSecretArn
+          REDSHIFT_DB_NAME: !Ref RedshiftDbName
+          REDSHIFT_IAM_ROLE: !Ref RedshiftIAMRole
+          CLUSTER_IDENTIFIER: !Ref ClusterIdentifier
+          DYNAMODB_TABLE_NAME: !Ref DynamodbMetaTable
+          LOG_LEVEL: INFO
+          MAX_INPUT_RECORD_COUNT: 300000
+          POWERTOOLS_LOGGER_LOG_EVENT: true
+          POWERTOOLS_METRICS_NAMESPACE: RedshiftToDynamo
+          POWERTOOLS_SERVICE_NAME: semarchy-xref
+          POWERTOOLS_TRACE_DISABLED:
+            !If
+            - ShouldEnableTrace
+            - false
+            - true
+
+
+  StepFunctionCallBack:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./src/lambda_functions/callback_step_function
+      Description: >-
+        Send Tocken to Step function call back
+      Handler: app.lambda_handler
+      Layers:
+        - !Ref AwsDataWranglerLayer
+        - !Ref AwsLambdaPowertoolsPythonLayer
+      MemorySize: 4024
+      # policy templates:
+      # https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-policy-templates.html
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Ref DataS3Bucket
+        - DynamoDBCrudPolicy:
+            TableName: !Ref DynamodbMetaTable
+        # - StepFunctionsExecutionPolicy:
+        #     StateMachineName:
+        #       !GetAtt RedshiftToDynamoHistProcesStateMachine.Name
+        - AWSStepFunctionsFullAccess
+        - AmazonRedshiftDataFullAccess
+        - AWSSecretsManagerGetSecretValuePolicy:
+            SecretArn: !Ref DbSecretArn
+      Timeout: 900
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref SecGroup
+        SubnetIds: !Ref SubnetIds
+      Tracing:
+        !If
+        - ShouldEnableTrace
+        - Active
+        - PassThrough
+      Environment:
+        Variables:
+          DATAS3BUCKET: !Ref DataS3Bucket
+          DBSECRETARN: !Ref DbSecretArn
+          REDSHIFT_DB_NAME: !Ref RedshiftDbName
+          REDSHIFT_IAM_ROLE: !Ref RedshiftIAMRole
+          CLUSTER_IDENTIFIER: !Ref ClusterIdentifier
+          DYNAMODB_TABLE_NAME: !Ref DynamodbMetaTable
+          LOG_LEVEL: INFO
+          MAX_INPUT_RECORD_COUNT: 300000
+          POWERTOOLS_LOGGER_LOG_EVENT: true
+          POWERTOOLS_METRICS_NAMESPACE: RedshiftToDynamo
+          POWERTOOLS_SERVICE_NAME: semarchy-xref
+          POWERTOOLS_TRACE_DISABLED:
+            !If
+            - ShouldEnableTrace
+            - false
+            - true
+
+
+  #######################################################
+  ##Event Bridge
+  ########################################################
+
+  EventBridgeRedshiftEventRule:
+    Type: "AWS::Events::Rule"
+    Description: redshift event capture rule
+    Properties:
+      EventPattern: "{ \"source\": [\"aws.redshift-data\"],\"detail-type\": [\"Redshift Data Statement Status Change\"],\"detail\": {\"statementName\": [{\"prefix\": \"AWS-vault-unload-test\"}]}}"
+      Description: Respond to Redshift-data events
+      State: "ENABLED"
+      Targets:
+          -
+            Arn: !GetAtt 'StepFunctionCallBack.Arn'
+            Id: EventBridgeRedshiftEventRule
+
+  PermissionForRedshiftEventToInvokeLambda:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName:
+        Ref: "StepFunctionCallBack"
+      Action: "lambda:InvokeFunction"
+      Principal: "events.amazonaws.com"
+      SourceArn:
+        Fn::GetAtt:
+          - "EventBridgeRedshiftEventRule"
+          - "Arn"
+
+  LoadDynamoFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./src/lambda_functions/load_dynamodb
+      Description: >-
+        Process incoming files from S3 prefix and writes records to the
+          DynamoDB Table
+      Handler: app.lambda_handler
+      Layers:
+        - !Ref AwsDataWranglerLayer
+        - !Ref AwsLambdaPowertoolsPythonLayer
+        - !Ref SemarchyXRefUtilsPythonLayer
+      MemorySize: 4096
+      # policy templates:
+      # https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-policy-templates.html
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Ref DataS3Bucket
+        - DynamoDBCrudPolicy:
+            TableName: !Ref DynamoDbTableTarget
+      Timeout: 900
+      Tracing:
+        !If
+        - ShouldEnableTrace
+        - Active
+        - PassThrough
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref SecGroup
+        SubnetIds: !Ref SubnetIds
+      Environment:
+        Variables:
+          LOG_LEVEL: INFO
+          MAX_INPUT_RECORD_COUNT: 300000
+          POWERTOOLS_LOGGER_LOG_EVENT: true
+          POWERTOOLS_METRICS_NAMESPACE: SemarchyXref
+          POWERTOOLS_SERVICE_NAME: semarchy-xref
+          POWERTOOLS_TRACE_DISABLED:
+            !If
+            - ShouldEnableTrace
+            - false
+            - true
+          TAGET_DYNAMO_TABLE_NAME: !Ref DynamoDbTableTarget
+
+  LoadDynamoFunctionWr:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./src/lambda_functions/load_dynamodb_wr
+      Description: >-
+        Process incoming files from S3 prefix and writes records to the
+          DynamoDB Table
+      Handler: app.lambda_handler
+      Layers:
+        - !Ref AwsDataWranglerLayer
+        - !Ref AwsLambdaPowertoolsPythonLayer
+        - !Ref SemarchyXRefUtilsPythonLayer
+      MemorySize: 4096
+      # policy templates:
+      # https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-policy-templates.html
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Ref DataS3Bucket
+        - DynamoDBCrudPolicy:
+            TableName: !Ref DynamoDbTableTarget
+        - AmazonRedshiftDataFullAccess
+        - AWSSecretsManagerGetSecretValuePolicy:
+            SecretArn: !Ref DbSecretArn
+      Timeout: 900
+      Tracing:
+        !If
+        - ShouldEnableTrace
+        - Active
+        - PassThrough
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref SecGroup
+        SubnetIds: !Ref SubnetIds
+      Environment:
+        Variables:
+          DBSECRETARN: !Ref DbSecretArn
+          LOG_LEVEL: INFO
+          MAX_INPUT_RECORD_COUNT: 300000
+          POWERTOOLS_LOGGER_LOG_EVENT: true
+          POWERTOOLS_METRICS_NAMESPACE: SemarchyXref
+          POWERTOOLS_SERVICE_NAME: semarchy-xref
+          POWERTOOLS_TRACE_DISABLED:
+            !If
+            - ShouldEnableTrace
+            - false
+            - true
+          TAGET_DYNAMO_TABLE_NAME: !Ref DynamoDbTableTarget
+
+  LoadDynamoFunctionParent:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./src/lambda_functions/load_dynamodb_wr
+      Description: >-
+        Process incoming files from S3 prefix and writes records to the
+          DynamoDB Table
+      Handler: parent.lambda_handler
+      Layers:
+        - !Ref AwsDataWranglerLayer
+        - !Ref AwsLambdaPowertoolsPythonLayer
+        - !Ref SemarchyXRefUtilsPythonLayer
+      MemorySize: 4096
+      # policy templates:
+      # https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-policy-templates.html
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Ref DataS3Bucket
+        - DynamoDBCrudPolicy:
+            TableName: !Ref DynamoDbTableTarget
+        - AmazonRedshiftDataFullAccess
+        - AWSSecretsManagerGetSecretValuePolicy:
+            SecretArn: !Ref DbSecretArn
+        - LambdaInvokePolicy:
+            FunctionName: !Ref LoadDynamoFunctionChild
+      Timeout: 900
+      Tracing:
+        !If
+        - ShouldEnableTrace
+        - Active
+        - PassThrough
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref SecGroup
+        SubnetIds: !Ref SubnetIds
+      Environment:
+        Variables:
+          DBSECRETARN: !Ref DbSecretArn
+          LOG_LEVEL: INFO
+          MAX_INPUT_RECORD_COUNT: 300000
+          NUMBER_OF_CHILD_RECORDS_COUNT: 100000
+          CHILD_FUNCTION_NAME: !Ref LoadDynamoFunctionChild
+          POWERTOOLS_LOGGER_LOG_EVENT: true
+          POWERTOOLS_METRICS_NAMESPACE: SemarchyXref
+          POWERTOOLS_SERVICE_NAME: semarchy-xref
+          POWERTOOLS_TRACE_DISABLED:
+            !If
+            - ShouldEnableTrace
+            - false
+            - true
+          TAGET_DYNAMO_TABLE_NAME: !Ref DynamoDbTableTarget
+
+  LoadDynamoFunctionChild:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./src/lambda_functions/load_dynamodb_wr
+      Description: >-
+        Process incoming files from S3 prefix and writes records to the
+          DynamoDB Table
+      Handler: child.lambda_handler
+      Layers:
+        - !Ref AwsDataWranglerLayer
+        - !Ref AwsLambdaPowertoolsPythonLayer
+        - !Ref SemarchyXRefUtilsPythonLayer
+      MemorySize: 4096
+      # policy templates:
+      # https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-policy-templates.html
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Ref DataS3Bucket
+        - DynamoDBCrudPolicy:
+            TableName: !Ref DynamoDbTableTarget
+        - AmazonRedshiftDataFullAccess
+        - AWSSecretsManagerGetSecretValuePolicy:
+            SecretArn: !Ref DbSecretArn
+      Timeout: 900
+      Tracing:
+        !If
+        - ShouldEnableTrace
+        - Active
+        - PassThrough
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref SecGroup
+        SubnetIds: !Ref SubnetIds
+      Environment:
+        Variables:
+          DBSECRETARN: !Ref DbSecretArn
+          LOG_LEVEL: INFO
+          MAX_INPUT_RECORD_COUNT: 300000
+          NUMBER_OF_CHILD_RECORDS_COUNT: 100000
+          POWERTOOLS_LOGGER_LOG_EVENT: true
+          POWERTOOLS_METRICS_NAMESPACE: SemarchyXref
+          POWERTOOLS_SERVICE_NAME: semarchy-xref
+          POWERTOOLS_TRACE_DISABLED:
+            !If
+            - ShouldEnableTrace
+            - false
+            - true
+          TAGET_DYNAMO_TABLE_NAME: !Ref DynamoDbTableTarget
+  ##########################################################################
+  # Step Functions
+  #
+  # https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-step-functions-in-sam.html
+  # https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/sam-resource-statemachine.html
+  ##########################################################################
+  RedshiftToDynamoHistProcesStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      DefinitionUri: ./src/state_machines/unload_process/state_machine.asl.json
+      # NOTE DefinitionSubstitutions only supports string substitutions
+      # so numeric values don't work
+      DefinitionSubstitutions:
+        S3ListFunctionArn: !GetAtt RedshiftUnloadS3ListFunction.Arn
+        redshiftUnload: !GetAtt RedshiftRunSpsFunction.Arn
+        LoadDynamoFunctionArn: !GetAtt LoadDynamoFunction.Arn
+
+      # policy templates:
+      # https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-policy-templates.html
+      Policies:
+        - LambdaInvokePolicy:
+            FunctionName: !Ref RedshiftUnloadS3ListFunction
+        - LambdaInvokePolicy:
+            FunctionName: !Ref RedshiftRunSpsFunction
+        - LambdaInvokePolicy:
+            FunctionName: !Ref LoadDynamoFunction
+        - AWSXrayWriteOnlyAccess
+      Tracing:
+        !If
+        - ShouldEnableTrace
+        - Enabled: true
+        - Enabled: false
+
+  FailureProcessSNSTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: !Sub "GlueEtl-Notification-Topic-${AWS::StackName}"
+      KmsMasterKeyId: alias/aws/sns
+      Subscription:
+        - Endpoint: !Ref SupportNotificationEmail
+          Protocol: email
+      Tags:
+        - Key: Name
+          Value:
+            !Sub "DLQProcess job failure notification for stack: ${AWS::StackName}"
+
+  DQLProcessFailureSnsTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sns:Publish
+            Resource: '*'
+      Topics:
+        - !Ref FailureProcessSNSTopic
+
+
+Outputs:
+  RedshiftToDynamoHistProcesStateMachineArn:
+    Description: >-
+      ARN of the Semarchy Incoming Process
+    Value: !GetAtt RedshiftToDynamoHistProcesStateMachine.Arn
