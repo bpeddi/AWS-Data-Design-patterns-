@@ -74,7 +74,7 @@ CREATE OR REPLACE PROCEDURE public.sp_etl_log_etl_event (
 
 AS
 
-$$
+\$\$
 
 DECLARE
 
@@ -103,7 +103,7 @@ EXECUTE v_sql;
 
 END;
 
-$$ LANGUAGE plpgsql
+\$\$ LANGUAGE plpgsql
 
 ;
 
@@ -232,7 +232,7 @@ can be retrieve it in next step.
 
 <img src="media/image7.png" style="width:6.5in;height:2.08819in" />
 
-2.  **StepFunctionCallBack**:- This function invoked by event bridge
+1.  **StepFunctionCallBack**:- This function invoked by event bridge
     event rule upon completion of redshift query, this function makes
     call to redshift data api describes statement to check status of SQL
     query.
@@ -289,16 +289,16 @@ This stack will deploy 2 lambda layers.
     lambda function fails. Below is an example of the execution logs for
     reference:
 
-<img src="media/image10.png" style="width:6.5in;height:2.5in" />
+<img src="media/image10.png" style="width:5.5in;height:2.03125in" />
 
 Upon successful run your step function should look as shown below.
 
-<img src="media/image11.png" style="width:5.71875in;height:4.76042in" />
+<img src="media/image11.png" style="width:6.5in;height:4.61944in" />
 
-2.  You could also view DynamoDB table to validate if the data is moved
+1.  You could also view DynamoDB table to validate if the data is moved
     from redshift into DynamoDB table.
 
-3.  Any failures this process send input payload message to SNS topic
+2.  Any failures this process send input payload message to SNS topic
     for support team to receive the notification email in case of any
     failures.
 
