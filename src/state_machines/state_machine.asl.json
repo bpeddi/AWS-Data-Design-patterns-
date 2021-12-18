@@ -7,7 +7,7 @@
       "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
       "HeartbeatSeconds": 180,
       "Parameters": {
-        "FunctionName": "${redshiftUnload}",
+        "FunctionName": "${RedshiftRunSpsFunction}",
         "Payload": {
           "token.$": "$$.Task.Token",
           "sql.$": "$.sql",
@@ -27,17 +27,10 @@
     },
     "Send Error Message": {
       "Type": "Task",
-      "Resource": "arn:aws:states:::sqs:sendMessage",
+      "Resource": "arn:aws:states:::sns:publish",
       "Parameters": {
-        "QueueUrl": "${DeadLetterQueueUrl}",
-        "MessageBody.$": "$$.Execution.Input",
-        "MessageGroupId.$": "$$.StateMachine.Id",
-        "MessageAttributes": {
-          "ExecutionId": {
-            "DataType": "String",
-            "StringValue.$": "$$.Execution.Id"
-          }
-        }
+        "Message.$": "$",
+        "TopicArn": "${FailureProcessSNSTopic}"
       },
       "Next": "Fail"
     },

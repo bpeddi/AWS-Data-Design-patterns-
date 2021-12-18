@@ -12,27 +12,16 @@ import json
 
 # imports added by Lambda layer
 # pylint: disable=import-error
-from aws_lambda_powertools import Logger, Metrics, Tracer
-from aws_lambda_powertools.metrics import MetricUnit
+from aws_lambda_powertools import Logger
+
 
 LOGGER = Logger()
-TRACER = Tracer()
-METRICS = Metrics()
-
-METRICS.add_dimension(name="Direction", value="Unloading")
-METRICS.add_dimension(name="Task", value="RedshiftUnload")
-
-
 
 SecretArn = getenv("DBSECRETARN")
 RedshiftDbName = getenv("REDSHIFT_DB_NAME")
-RedshiftIAMRole = getenv("REDSHIFT_IAM_ROLE")
 ClusterIdentifier = getenv("CLUSTER_IDENTIFIER")
 DYNAMODB_META_TABLE_NAME = getenv("DYNAMODB_META_TABLE_NAME")
 Aws_Region = getenv("REGION")
-
-
-
 
 # MAX_INPUT_RECORD_COUNT = int(getenv("MAX_INPUT_RECORD_COUNT", "300000"))
 DYNAMODB_RESOURCE = boto3.resource("dynamodb")
@@ -86,7 +75,7 @@ def lambda_handler(event, context):
         )
 
         #Submit the stored proc asyncrounosly. String provided with StatementName is returned by redshift to Event Bridge with status.
-        # Check EventBridgeRedshiftEventRule in Redshift_stored_proc.yaml file.
+        # Check EventBridgeRedshiftEventRule in redshift_stored_procedures.yaml file.
         #https://awscli.amazonaws.com/v2/documentation/api/latest/reference/redshift-data/execute-statement.html
         #--statement-name (string)
         #The name of the SQL statement. You can name the SQL statement when you create it to identify the query.
