@@ -1,5 +1,5 @@
 version = 0.1
-[default.deploy.parameters]
+[dev.deploy.parameters]
 stack_name = "redshift-to-dynamo"
 s3_bucket = "aws-sam-cli-managed-default-samclisourcebucket-1b57tm2pdkoi1"
 s3_prefix = "redshift-to-dynamo"
@@ -22,3 +22,16 @@ parameter_overrides = """
                         DynamodbMetaTable=\"redshift-to-dynamo-meta\" \
                         DynamodbTargetTable=\"edm-student-dim\"
                         """
+
+[default]
+[default.deploy]
+[default.deploy.parameters]
+stack_name = "redshift-eb-sp"
+s3_bucket = "aws-sam-cli-managed-default-samclisourcebucket-1b57tm2pdkoi1"
+s3_prefix = "redshift-eb-sp"
+region = "us-west-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+disable_rollback = true
+parameter_overrides = "StackPrefix=\"RedshiftDataApi\" DynamoDbBillingMode=\"PAY_PER_REQUEST\" DynamoDbPointInTimeRecovery=\"true\" SubnetIds=\"subnet-0169efb331f0f198f\" SecGroup=\"sg-00453a44e8474e5ea\" DbSecretArn=\"arn:aws:secretsmanager:us-west-1:607745728546:secret:redshift-admin-secret-wos7Pk\" RedshiftDbName=\"vault_bala\" ClusterIdentifier=\"nsc-edm-redshift-n\" DynamodbMetaTable=\"redshift-StoredProc-meta\" SupportNotificationEmail=\"peddibp@amazon.com\" REGION=\"us-west-1\""
+image_repositories = []

@@ -10,8 +10,8 @@
         "FunctionName": "${RedshiftRunSpsFunction}",
         "Payload": {
           "token.$": "$$.Task.Token",
-          "sql.$": "$.sql",
-          "filesize.$" : "$.filesize"
+          "spname.$": "$.spname",
+          "event_message.$" : "$.event_message"
         }
       },
       "Catch":[

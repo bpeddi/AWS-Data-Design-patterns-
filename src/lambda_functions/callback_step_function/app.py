@@ -14,6 +14,7 @@ import json
 # imports added by Lambda layer
 # pylint: disable=import-error
 from aws_lambda_powertools import Logger
+
 LOGGER = Logger()
 DYNAMODB_META_TABLE_NAME = getenv("DYNAMODB_META_TABLE_NAME")
 DYNAMODB_RESOURCE = boto3.resource("dynamodb")

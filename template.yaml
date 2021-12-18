@@ -28,11 +28,6 @@ Parameters:
     AllowedValues:
       - false
       - true
-  DynamoDbTtl:
-    Description: >-
-      Specifies the DynamoDb TTL attribute. Leave empty to disable
-    Type: String
-    Default: TTL
   SubnetIds:
     Type: List<AWS::EC2::Subnet::Id>
     Description: >-
@@ -54,7 +49,7 @@ Parameters:
   DynamodbMetaTable:
     Type: String
     Description: Metadata table to track the Dyanmodb
-    Default: "redshift-to-dynamo-meta"
+    Default: "redshift-StoredProc-meta"
   SupportNotificationEmail:
     Type: String
     Description: Email address to send Stepfunction failure notifications
@@ -188,7 +183,7 @@ Resources:
         SubnetIds: !Ref SubnetIds
       Environment:
         Variables:
-          DYNAMODB_TABLE_NAME: !Ref DynamodbMetaTable
+          DYNAMODB_META_TABLE_NAME: !Ref DynamodbMetaTable
           LOG_LEVEL: INFO
 
   #######################################################
