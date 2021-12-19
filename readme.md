@@ -29,8 +29,8 @@ extensibility and simplicity, making it easier to maintain, faster to
 release new features and also reduce the impact of changes.
 
 The following architecture diagram highlights the end-to-end solution:
+![ Architecture ](/media/image1.png)
 
-<img src="media/image1.png" style="width:6.5in;height:4.04375in" />
 
 1.  Step Function invokes AWS Lambda by passing task token as payload
 
