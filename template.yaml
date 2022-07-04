@@ -39,7 +39,7 @@ Parameters:
   DbSecretArn:
     Type: String
     Description: Redshift ARN
-    Default: "redshifttest-nsc-test-Redshift-nsc-redshift-cluster-credentials"
+    Default: "redshifttest-myorg-test-Redshift-myorg-redshift-cluster-credentials"
   RedshiftDbName:
     Type: String
     Description: Redshift DB name

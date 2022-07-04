@@ -32,7 +32,7 @@ def get_item_from_dynamodb(statementName):
             return response["Item"]
     except botocore.exceptions.ClientError as e:
         raise Exception(
-            "Error in getting Token NSC.EDM.Vault.Lambda.MissingDynamoDBObject"
+            "Error in getting Token myorg.EDM.Vault.Lambda.MissingDynamoDBObject"
         )
 
 # Describes the details about a specific instance when a query was run by the Amazon Redshift Data API.
