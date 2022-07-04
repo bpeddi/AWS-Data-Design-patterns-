@@ -314,4 +314,4 @@ stored procedures. To learn more about Amazon Redshift Data API, please
 visit the
 [<u>documentation</u>](https://docs.aws.amazon.com/redshift/latest/mgmt/data-api.html).
 
-please contact [peddibp@amazon.com](mailto:peddibp@amazon.com) if you need any help with this code.
+please contact [bala.peddi@gmail.com(mailto:bala.peddi@gmail.com) if you need any help with this code.
